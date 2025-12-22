@@ -4,7 +4,10 @@ import json
 import secrets
 from datetime import datetime
 import os
+from flask_cors import CORS
 
+app = Flask(__name__)
+CORS(app)  # ✅ Autorise toutes les origines (pour le développement)
 app = Flask(__name__)
 DB_PATH = 'database.db'
 
