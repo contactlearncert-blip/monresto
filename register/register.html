@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Inscription Restaurant | Menu Numérique</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    body {
+      background: #f8f4f0;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 30px;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .container h1 {
+      color: #5d4037;
+      margin-bottom: 25px;
+      font-size: 1.8rem;
+    }
+    .form-group {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #555;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #5d4037;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .submit-btn:hover {
+      background: #4a342c;
+    }
+    .submit-btn:disabled {
+      background: #a59690;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 30px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 12px;
+      display: none;
+    }
+    .result h2 {
+      color: #5d4037;
+      margin-bottom: 15px;
+    }
+    .link-item {
+      margin: 12px 0;
+      padding: 10px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      position: relative;
+    }
+    .link-text {
+      word-break: break-all;
+      font-size: 0.9rem;
+      color: #333;
+    }
+    .copy-btn {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #e0d6cc;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .copy-btn:hover {
+      background: #5d4037;
+      color: white;
+    }
+    .qr-container {
+      margin-top: 20px;
+    }
+    .qr-container img {
+      width: 150px;
+      height: 150px;
+      border: 1px solid #eee;
+      border-radius: 8px;
+    }
+    .error {
+      color: #d32f2f;
+      margin-top: 15px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📝 Inscription Restaurant</h1>
+    <div class="form-group">
+      <label for="restaurantName">Nom du restaurant</label>
+      <input type="text" id="restaurantName" placeholder="Ex: Restaurant Al Bahia" required />
+    </div>
+    <div class="form-group">
+      <label for="email">Email</label>
+      <input type="email" id="email" placeholder="votre@email.com" required />
+    </div>
+    <button class="submit-btn" onclick="registerRestaurant()">Créer mon menu numérique</button>
+    
+    <div id="errorMessage" class="error"></div>
+
+    <div id="result" class="result">
+      <h2>✅ Votre compte est créé !</h2>
+      
+      <div class="link-item">
+        <div><strong>🔗 Lien client (à mettre sur les tables)</strong></div>
+        <div class="link-text" id="clientLink"></div>
+        <button class="copy-btn" onclick="copyToClipboard('clientLink')">Copier</button>
+      </div>
+
+      <div class="link-item">
+        <div><strong>🔑 Lien staff (à garder privé)</strong></div>
+        <div class="link-text" id="staffLink"></div>
+        <button class="copy-btn" onclick="copyToClipboard('staffLink')">Copier</button>
+      </div>
+
+      <div class="qr-container">
+        <div><strong>📷 QR Code (client)</strong></div>
+        <img id="qrCode" src="" alt="QR Code" />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Base URL (à adapter si hébergé ailleurs)
+    const BASE_URL = 'http://localhost:5000';
+
+    async function registerRestaurant() {
+      const name = document.getElementById('restaurantName').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const errorDiv = document.getElementById('errorMessage');
+      const submitBtn = document.querySelector('.submit-btn');
+
+      if (!name || !email) {
+        errorDiv.textContent = "Veuillez remplir tous les champs.";
+        return;
+      }
+
+      if (!validateEmail(email)) {
+        errorDiv.textContent = "Veuillez entrer un email valide.";
+        return;
+      }
+
+      errorDiv.textContent = "";
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Création en cours...";
+
+      try {
+        const response = await fetch(`${BASE_URL}/api/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          document.getElementById('clientLink').textContent = data.client_link;
+          document.getElementById('staffLink').textContent = data.staff_link;
+          
+          // Générer le QR code dynamiquement
+          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data.client_link)}`;
+          document.getElementById('qrCode').src = qrUrl;
+
+          document.getElementById('result').style.display = 'block';
+          window.scrollTo(0, document.body.scrollHeight);
+        } else {
+          errorDiv.textContent = data.error || "Erreur lors de l'inscription.";
+        }
+      } catch (err) {
+        console.error(err);
+        errorDiv.textContent = "❌ Erreur réseau. Vérifiez que le serveur est lancé.";
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Créer mon menu numérique";
+      }
+    }
+
+    function validateEmail(email) {
+      const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return re.test(email);
+    }
+
+    function copyToClipboard(elementId) {
+      const text = document.getElementById(elementId).textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = "✔ Copié !";
+        setTimeout(() => {
+          btn.textContent = originalText;
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

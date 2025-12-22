@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard Staff - Restaurant</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f4f4;
+      padding: 20px;
+      margin: 0;
+    }
+    .header {
+      text-align: center;
+      color: #5d4037;
+      margin-bottom: 20px;
+      padding-top: 30px;
+    }
+    .stats {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 10px;
+      padding: 15px;
+      min-width: 200px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #8b5e3c;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      justify-content: center;
+    }
+    .tab-btn {
+      padding: 10px 20px;
+      background: #e0d6cc;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .tab-btn.active {
+      background: #5d4037;
+      color: white;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .order-card {
+      background: white;
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .order-table {
+      font-weight: bold;
+      color: #d32f2f;
+      font-size: 1.1rem;
+    }
+    .order-items {
+      margin: 10px 0;
+      font-size: 0.95rem;
+      color: #555;
+    }
+    .confirm-btn, .delete-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-left: 5px;
+    }
+    .confirm-btn {
+      background: #388e3c;
+      color: white;
+    }
+    .confirm-btn:hover {
+      background: #2e7d32;
+    }
+    .delete-btn {
+      background: #f44336;
+      color: white;
+    }
+    .delete-btn:hover {
+      background: #d32f2f;
+    }
+    .no-orders {
+      text-align: center;
+      color: #888;
+      font-style: italic;
+      padding: 30px;
+    }
+    .add-form {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .add-form input, .add-form select {
+      width: 100%;
+      padding: 8px;
+      margin: 8px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .add-form button {
+      width: 100%;
+      padding: 10px;
+      background: #5d4037;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .export-btn {
+      background: #1976d2;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    #manageMenu {
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📋 Dashboard Staff</h1>
+  </div>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div>Chiffre d’affaires aujourd’hui</div>
+      <div class="stat-value" id="totalSales">0 MAD</div>
+    </div>
+    <div class="stat-card">
+      <div>Commandes validées</div>
+      <div class="stat-value" id="ordersCount">0</div>
+    </div>
+    <button class="export-btn" onclick="exportSalesTxt()">📄 Fichiers vente (un) .txt</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="pending">En Attente</button>
+    <button class="tab-btn" data-tab="confirmed">Validées</button>
+    <button class="tab-btn" data-tab="add">Ajouter/Supprimer</button>
+  </div>
+
+  <div id="pendingTab" class="tab-content active">
+    <h2>📦 Commandes en Attente</h2>
+    <div id="pendingOrders"></div>
+  </div>
+
+  <div id="confirmedTab" class="tab-content">
+    <h2>✅ Commandes Validées</h2>
+    <div id="confirmedOrders"></div>
+  </div>
+
+  <div id="addTab" class="tab-content">
+    <h2>➕ Ajouter un plat au menu</h2>
+    <div class="add-form">
+      <input type="text" id="itemName" placeholder="Nom du plat" required />
+      <input type="text" id="itemDesc" placeholder="Description" required />
+      <select id="itemCategory">
+        <option value="entrees">Entrées</option>
+        <option value="plats">Plats</option>
+        <option value="desserts">Desserts</option>
+        <option value="boissons">Boissons</option>
+      </select>
+      <input type="text" id="itemPrice" placeholder="Prix (ex: 18 MAD)" required />
+      
+      <label for="itemImageUpload">Choisir une image :</label>
+      <input type="file" id="itemImageUpload" accept="image/*" onchange="previewImage(event)" />
+      <div id="imagePreview" style="margin:10px; text-align:center;">
+        <img id="preview" src="" alt="Aperçu" style="max-width:100%; max-height:150px; display:none;" />
+      </div>
+
+      <button onclick="addMenuItem()">Ajouter le plat</button>
+    </div>
+
+    <!-- Section de gestion des plats -->
+    <h2 style="margin-top: 30px;">🗑️ Gérer les plats</h2>
+    <div id="manageMenu">
+      <!-- Liste chargée dynamiquement -->
+    </div>
+  </div>
+
+  <script>
+    // ✅ Étape 1 : Extraire le restaurant_id de l'URL
+    const pathParts = window.location.pathname.split('/');
+    const restaurantId = pathParts[2]; // /staff/rest_a1b2c3 → index 2
+
+    if (!restaurantId || !restaurantId.startsWith('rest_')) {
+      alert("❌ Restaurant non trouvé. Veuillez utiliser le lien fourni.");
+      throw new Error("restaurant_id manquant");
+    }
+
+    // Base URL (à adapter si tu changes d'hébergeur)
+    const BASE_URL = 'http://localhost:5000';
+
+    function previewImage(event) {
+      const input = event.target;
+      const preview = document.getElementById('preview');
+      const reader = new FileReader();
+      reader.onload = function() {
+        preview.src = reader.result;
+        preview.style.display = 'block';
+      };
+      if (input.files && input.files[0]) {
+        reader.readAsDataURL(input.files[0]);
+      }
+    }
+
+    async function addMenuItem() {
+      const name = document.getElementById('itemName').value;
+      const desc = document.getElementById('itemDesc').value;
+      const category = document.getElementById('itemCategory').value;
+      const price = document.getElementById('itemPrice').value;
+      const imageFile = document.getElementById('itemImageUpload').files[0];
+
+      if (!name || !desc || !category || !price) {
+        alert("Veuillez remplir tous les champs obligatoires.");
+        return;
+      }
+      if (!imageFile) {
+        alert("Veuillez sélectionner une image.");
+        return;
+      }
+
+      let imageBase64 = '';
+      const reader = new FileReader();
+      reader.readAsDataURL(imageFile);
+      await new Promise(resolve => reader.onloadend = resolve);
+      imageBase64 = reader.result;
+
+      try {
+        // ✅ Ajout du restaurant_id dans l'URL
+        const response = await fetch(`${BASE_URL}/api/menu/add/${restaurantId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description: desc, category, price, image_data: imageBase64 })
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+          alert("✅ Plat ajouté avec succès !");
+          document.getElementById('itemName').value = '';
+          document.getElementById('itemDesc').value = '';
+          document.getElementById('itemPrice').value = '';
+          document.getElementById('itemImageUpload').value = '';
+          document.getElementById('preview').style.display = 'none';
+          loadMenuForManagement();
+        } else {
+          alert("❌ Erreur : " + (result.error || "Inconnue"));
+        }
+      } catch (err) {
+        alert("❌ Erreur réseau.");
+        console.error(err);
+      }
+    }
+
+    async function loadMenuForManagement() {
+      try {
+        // ✅ Récupérer les plats du restaurant
+        const response = await fetch(`${BASE_URL}/api/menu/${restaurantId}`);
+        const items = await response.json();
+        const container = document.getElementById('manageMenu');
+
+        if (items.length === 0) {
+          container.innerHTML = '<p>Aucun plat à supprimer.</p>';
+          return;
+        }
+
+        container.innerHTML = `
+          <div style="display: grid; gap: 10px; max-height: 300px; overflow-y: auto; padding: 10px; background: #f9f9f9; border-radius: 8px;">
+            ${items.map(item => `
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #eee;">
+                <div>
+                  <strong>${item.name}</strong> — ${item.category}
+                </div>
+                <button class="delete-btn" onclick="deleteMenuItem(${item.id})">
+                  Supprimer
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        console.error("Erreur lors du chargement des plats :", err);
+        document.getElementById('manageMenu').innerHTML = '<p style="color:red;">Erreur de chargement.</p>';
+      }
+    }
+
+    async function deleteMenuItem(itemId) {
+      if (!confirm("⚠️ Êtes-vous sûr de vouloir supprimer ce plat ? Cette action est irréversible.")) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${BASE_URL}/api/menu/${itemId}`, {
+          method: 'DELETE'
+        });
+
+        if (response.ok) {
+          alert("✅ Plat supprimé avec succès !");
+          loadMenuForManagement();
+        } else {
+          const error = await response.json();
+          alert("❌ Erreur : " + (error.error || "Impossible de supprimer."));
+        }
+      } catch (err) {
+        alert("❌ Erreur réseau.");
+        console.error(err);
+      }
+    }
+
+    async function loadOrders(url, containerId) {
+      const container = document.getElementById(containerId);
+      try {
+        const response = await fetch(url);
+        const orders = await response.json();
+
+        if (orders.length === 0) {
+          container.innerHTML = '<div class="no-orders">Aucune commande.</div>';
+          return;
+        }
+
+        container.innerHTML = orders.map(order => {
+          let itemsList = [];
+          try {
+            itemsList = JSON.parse(order.items);
+          } catch (err) {
+            console.error("Erreur de parsing JSON pour la commande ID", order.id, ":", err);
+            itemsList = [{ name: "Données invalides", price: "???" }];
+          }
+
+          return `
+            <div class="order-card">
+              <div class="order-header">
+                <span class="order-table">Table ${order.table_number}</span>
+                ${url.includes('pending') ? 
+                  `<button class="confirm-btn" onclick="confirmOrder(${order.id})">✓ Valider</button>` : 
+                  `<div style="display: flex; gap: 5px;">
+                     <small style="color:green;">✅ Validée</small>
+                     <button class="delete-btn" onclick="deleteOrder(${order.id})">🗑️ Supprimer</button>
+                   </div>`
+                }
+              </div>
+              <div class="order-items">
+                ${itemsList.map(item => `${item.name} (${item.price})`).join(', ')}
+              </div>
+              <small>Envoyée à ${new Date(order.timestamp).toLocaleTimeString()}</small>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error("Erreur lors du chargement des commandes:", err);
+        container.innerHTML = '<div class="no-orders" style="color:red;">Erreur de connexion au serveur.</div>';
+      }
+    }
+
+    async function confirmOrder(orderId) {
+      try {
+        const response = await fetch(`${BASE_URL}/api/order/${orderId}/confirm`, { method: 'POST' });
+        if (response.ok) {
+          alert("✅ Commande confirmée !");
+          loadOrders(`${BASE_URL}/api/orders/pending/${restaurantId}`, 'pendingOrders');
+          loadOrders(`${BASE_URL}/api/orders/confirmed/${restaurantId}`, 'confirmedOrders');
+          loadStats();
+        }
+      } catch (err) {
+        alert("❌ Erreur lors de la confirmation.");
+        console.error(err);
+      }
+    }
+
+    async function deleteOrder(orderId) {
+      if (!confirm("⚠️ Êtes-vous sûr de vouloir supprimer cette commande ? Cette action est irréversible.")) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${BASE_URL}/api/order/${orderId}`, {
+          method: 'DELETE'
+        });
+
+        if (response.ok) {
+          alert("✅ Commande supprimée avec succès !");
+          loadOrders(`${BASE_URL}/api/orders/pending/${restaurantId}`, 'pendingOrders');
+          loadOrders(`${BASE_URL}/api/orders/confirmed/${restaurantId}`, 'confirmedOrders');
+          loadStats();
+        } else {
+          const error = await response.json();
+          alert("❌ Erreur : " + (error.error || "Impossible de supprimer."));
+        }
+      } catch (err) {
+        alert("❌ Erreur réseau.");
+        console.error(err);
+      }
+    }
+
+    function exportSalesTxt() {
+      fetch(`${BASE_URL}/api/orders/confirmed/${restaurantId}`)
+        .then(res => res.json())
+        .then(orders => {
+          if (orders.length === 0) {
+            alert("Aucune commande validée à exporter.");
+            return;
+          }
+
+          const today = new Date().toISOString().split('T')[0];
+          const todayOrders = orders.filter(order => 
+            order.timestamp.startsWith(today)
+          );
+
+          if (todayOrders.length === 0) {
+            alert("Aucune commande validée aujourd'hui.");
+            return;
+          }
+
+          let content = "=== VENTES DU JOUR ===\n\n";
+          todayOrders.forEach(order => {
+            let itemsList = [];
+            try {
+              itemsList = JSON.parse(order.items);
+            } catch (err) {
+              itemsList = [{ name: "Données invalides", price: "???" }];
+            }
+
+            const total = parseFloat(order.total_price).toFixed(2);
+            const itemsStr = itemsList.map(item => `${item.name} (${item.price})`).join(', ');
+            content += `Table ${order.table_number}: ${itemsStr} — Total: ${total} MAD\n`;
+          });
+
+          const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `ventes_${today}.txt`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          alert(`✅ Fichier "ventes_${today}.txt" téléchargé.`);
+        })
+        .catch(err => {
+          alert("❌ Erreur lors de l'exportation.");
+          console.error(err);
+        });
+    }
+
+    async function loadStats() {
+      try {
+        const response = await fetch(`${BASE_URL}/api/stats/today/${restaurantId}`);
+        const stats = await response.json();
+        document.getElementById('totalSales').textContent = `${stats.total_sales || 0} MAD`;
+        document.getElementById('ordersCount').textContent = stats.orders_count || 0;
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        const tabId = `${btn.dataset.tab}Tab`;
+        document.getElementById(tabId).classList.add('active');
+
+        if (btn.dataset.tab === 'pending') {
+          loadOrders(`${BASE_URL}/api/orders/pending/${restaurantId}`, 'pendingOrders');
+        } else if (btn.dataset.tab === 'confirmed') {
+          loadOrders(`${BASE_URL}/api/orders/confirmed/${restaurantId}`, 'confirmedOrders');
+        } else if (btn.dataset.tab === 'add') {
+          loadMenuForManagement();
+        }
+      });
+    });
+
+    // ✅ Chargement initial avec restaurant_id
+    loadOrders(`${BASE_URL}/api/orders/pending/${restaurantId}`, 'pendingOrders');
+    loadOrders(`${BASE_URL}/api/orders/confirmed/${restaurantId}`, 'confirmedOrders');
+    loadStats();
+
+    setInterval(() => {
+      loadOrders(`${BASE_URL}/api/orders/pending/${restaurantId}`, 'pendingOrders');
+      loadOrders(`${BASE_URL}/api/orders/confirmed/${restaurantId}`, 'confirmedOrders');
+      loadStats();
+    }, 5000);
+  </script>
+</body>
+</html>
