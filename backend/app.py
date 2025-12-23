@@ -23,20 +23,16 @@ db.init_app(app)
 # === Utilitaires ===
 
 def generate_public_id():
-    """Génère un ID public unique pour un restaurant (ex: rest_a1b2c3)"""
     return "rest_" + secrets.token_urlsafe(8).replace("_", "").replace("-", "")[:8]
 
 def get_restaurant_by_public_id(public_id):
-    """Récupère un restaurant par son public_id ou renvoie 404"""
     return Restaurant.query.filter_by(public_id=public_id).first_or_404()
 
 def extract_price_from_string(price_str):
-    """Extrait un nombre flottant d'une chaîne comme '35 MAD' ou '40.5 DHS'"""
     match = re.search(r'[\d.]+', price_str)
     return float(match.group()) if match else 0.0
 
 def get_or_create_category(restaurant_id, category_name):
-    """Récupère ou crée une catégorie pour un restaurant"""
     category = Category.query.filter_by(
         restaurant_id=restaurant_id,
         name=category_name
@@ -48,7 +44,6 @@ def get_or_create_category(restaurant_id, category_name):
     return category
 
 def format_orders_for_staff(orders):
-    """Formate les commandes pour le dashboard staff"""
     result = []
     for order in orders:
         items = []
@@ -71,10 +66,8 @@ def format_orders_for_staff(orders):
 
 @app.before_first_request
 def create_tables():
-    """Crée les tables à la première requête (pas nécessaire en production avec migrate)"""
     db.create_all()
 
-# --- 1. Inscription restaurant ---
 @app.route('/api/register', methods=['POST'])
 def register_restaurant():
     data = request.get_json()
@@ -98,7 +91,6 @@ def register_restaurant():
         'staff_url': staff_url
     }), 201
 
-# --- 2. Menu (plat à plat) ---
 @app.route('/api/menu/<public_id>', methods=['GET'])
 def get_menu_flat(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
@@ -118,7 +110,6 @@ def get_menu_flat(public_id):
         })
     return jsonify(menu)
 
-# --- 3. Ajouter un plat ---
 @app.route('/api/menu/add/<public_id>', methods=['POST'])
 def add_dish(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
@@ -150,7 +141,6 @@ def add_dish(public_id):
     db.session.commit()
     return jsonify({'id': dish.id}), 201
 
-# --- 4. Supprimer un plat ---
 @app.route('/api/menu/<int:dish_id>', methods=['DELETE'])
 def delete_dish(dish_id):
     dish = Dish.query.get_or_404(dish_id)
@@ -158,7 +148,6 @@ def delete_dish(dish_id):
     db.session.commit()
     return jsonify({'success': True}), 200
 
-# --- 5. Commandes en attente (staff) ---
 @app.route('/api/orders/pending/<public_id>', methods=['GET'])
 def get_pending_orders(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
@@ -168,7 +157,6 @@ def get_pending_orders(public_id):
     ).order_by(Order.created_at.desc()).all()
     return jsonify(format_orders_for_staff(orders))
 
-# --- 6. Commandes validées (staff) ---
 @app.route('/api/orders/confirmed/<public_id>', methods=['GET'])
 def get_confirmed_orders(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
@@ -178,7 +166,6 @@ def get_confirmed_orders(public_id):
     ).order_by(Order.created_at.desc()).all()
     return jsonify(format_orders_for_staff(orders))
 
-# --- 7. Confirmer une commande (staff) ---
 @app.route('/api/order/<int:order_id>/confirm', methods=['POST'])
 def confirm_order(order_id):
     order = Order.query.get_or_404(order_id)
@@ -186,7 +173,6 @@ def confirm_order(order_id):
     db.session.commit()
     return jsonify({'success': True}), 200
 
-# --- 8. Supprimer une commande (staff) ---
 @app.route('/api/order/<int:order_id>', methods=['DELETE'])
 def delete_order(order_id):
     order = Order.query.get_or_404(order_id)
@@ -194,7 +180,6 @@ def delete_order(order_id):
     db.session.commit()
     return jsonify({'success': True}), 200
 
-# --- 9. Statistiques du jour (staff) ---
 @app.route('/api/stats/today/<public_id>', methods=['GET'])
 def get_stats_today(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
@@ -216,7 +201,6 @@ def get_stats_today(public_id):
         'orders_count': orders_count
     })
 
-# --- 10. Créer commande (client) ---
 @app.route('/api/order/<public_id>', methods=['POST'])
 def create_order_client(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
@@ -242,14 +226,12 @@ def create_order_client(public_id):
     db.session.commit()
     return jsonify({'order_id': order.id}), 201
 
-# --- 11. Statut commande (client) ---
 @app.route('/api/order/<int:order_id>/status', methods=['GET'])
 def get_order_status_client(order_id):
     order = Order.query.get_or_404(order_id)
     status_frontend = 'confirmed' if order.status in ['validated', 'completed'] else 'pending'
     return jsonify({'status': status_frontend})
 
-# --- 12. Santé (pour Railway) ---
 @app.route('/health')
 def health():
     return {'status': 'ok'}
