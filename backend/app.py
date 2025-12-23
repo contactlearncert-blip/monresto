@@ -1,70 +1,262 @@
-from flask import Flask, jsonify, request, send_from_directory
-from flask_cors import CORS
-import sqlite3
-import json
-import secrets
-from datetime import datetime
 import os
+import secrets
+import re
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from models import db, Restaurant, Category, Dish, Order, OrderItem
+from datetime import datetime, date
 
-# ✅ Une seule instance Flask + CORS
 app = Flask(__name__)
-CORS(app)  # Autorise toutes les origines (nécessaire pour Vercel)
+CORS(app)
 
-DB_PATH = 'database.db'
+# === Configuration ===
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL',
+    'sqlite:///instance/database.db'
+).replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS restaurants (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS menu_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            restaurant_id TEXT NOT NULL,
-            name TEXT NOT IMPORTANT,
-            description TEXT,
-            category TEXT,
-            price TEXT,
-            image_data TEXT,
-            FOREIGN KEY (restaurant_id) REFERENCES restaurants (id)
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            restaurant_id TEXT NOT NULL,
-            table_number INTEGER NOT NULL,
-            items TEXT NOT NULL,
-            status TEXT DEFAULT 'pending',
-            total_price REAL DEFAULT 0,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (restaurant_id) REFERENCES restaurants (id)
-        )
-    ''')
-    conn.commit()
-    conn.close()
+# === Initialisation ===
+db.init_app(app)
 
-init_db()
+# === Utilitaires ===
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def generate_public_id():
+    """Génère un ID public unique pour un restaurant (ex: rest_a1b2c3)"""
+    return "rest_" + secrets.token_urlsafe(8).replace("_", "").replace("-", "")[:8]
 
-# === Toutes tes routes API ici (inchangées) ===
-# ... (garde tout le reste de ton code tel quel)
+def get_restaurant_by_public_id(public_id):
+    """Récupère un restaurant par son public_id ou renvoie 404"""
+    return Restaurant.query.filter_by(public_id=public_id).first_or_404()
 
-# ✅ Route d'inscription
-@app.route('/register')
-def register_page():
-    return send_from_directory('../register', 'register.html')
+def extract_price_from_string(price_str):
+    """Extrait un nombre flottant d'une chaîne comme '35 MAD' ou '40.5 DHS'"""
+    match = re.search(r'[\d.]+', price_str)
+    return float(match.group()) if match else 0.0
 
-# ✅ Démarrage correct pour Railway
+def get_or_create_category(restaurant_id, category_name):
+    """Récupère ou crée une catégorie pour un restaurant"""
+    category = Category.query.filter_by(
+        restaurant_id=restaurant_id,
+        name=category_name
+    ).first()
+    if not category:
+        category = Category(name=category_name, restaurant_id=restaurant_id)
+        db.session.add(category)
+        db.session.flush()
+    return category
+
+def format_orders_for_staff(orders):
+    """Formate les commandes pour le dashboard staff"""
+    result = []
+    for order in orders:
+        items = []
+        for item in order.items:
+            items.append({
+                "name": item.dish.name,
+                "price": f"{item.dish.price} MAD"
+            })
+        total = sum(item.dish.price * item.quantity for item in order.items)
+        result.append({
+            "id": order.id,
+            "table_number": order.table_number or "—",
+            "items": items,
+            "total_price": total,
+            "timestamp": order.created_at.isoformat()
+        })
+    return result
+
+# === Routes ===
+
+@app.before_first_request
+def create_tables():
+    """Crée les tables à la première requête (pas nécessaire en production avec migrate)"""
+    db.create_all()
+
+# --- 1. Inscription restaurant ---
+@app.route('/api/register', methods=['POST'])
+def register_restaurant():
+    data = request.get_json()
+    name = data.get('name')
+    if not name:
+        return jsonify({'error': 'Nom requis'}), 400
+    if Restaurant.query.filter_by(name=name).first():
+        return jsonify({'error': 'Nom déjà utilisé'}), 409
+
+    public_id = generate_public_id()
+    restaurant = Restaurant(name=name, public_id=public_id)
+    db.session.add(restaurant)
+    db.session.commit()
+
+    client_url = f"{os.environ.get('CLIENT_URL', 'https://client.example.com')}/client/{public_id}"
+    staff_url = f"{os.environ.get('STAFF_URL', 'https://staff.example.com')}/staff/{public_id}"
+
+    return jsonify({
+        'restaurant_id': public_id,
+        'client_url': client_url,
+        'staff_url': staff_url
+    }), 201
+
+# --- 2. Menu (plat à plat) ---
+@app.route('/api/menu/<public_id>', methods=['GET'])
+def get_menu_flat(public_id):
+    restaurant = get_restaurant_by_public_id(public_id)
+    dishes = db.session.query(Dish, Category.name.label('category_name'))\
+        .join(Category, Dish.category_id == Category.id)\
+        .filter(Dish.restaurant_id == restaurant.id)\
+        .all()
+    menu = []
+    for dish, category_name in dishes:
+        menu.append({
+            "id": dish.id,
+            "name": dish.name,
+            "description": dish.description or "Délicieux plat de notre maison.",
+            "price": f"{dish.price} MAD",
+            "category": category_name,
+            "image_data": dish.image_base64 or ""
+        })
+    return jsonify(menu)
+
+# --- 3. Ajouter un plat ---
+@app.route('/api/menu/add/<public_id>', methods=['POST'])
+def add_dish(public_id):
+    restaurant = get_restaurant_by_public_id(public_id)
+    data = request.get_json()
+    name = data.get('name')
+    desc = data.get('description')
+    category_name = data.get('category')
+    price_str = data.get('price')
+    image_b64 = data.get('image_data')
+
+    if not all([name, desc, category_name, price_str]):
+        return jsonify({'error': 'Champs manquants'}), 400
+
+    try:
+        price = extract_price_from_string(price_str)
+    except:
+        return jsonify({'error': 'Prix invalide'}), 400
+
+    category = get_or_create_category(restaurant.id, category_name)
+    dish = Dish(
+        name=name,
+        description=desc,
+        price=price,
+        image_base64=image_b64,
+        category_id=category.id,
+        restaurant_id=restaurant.id
+    )
+    db.session.add(dish)
+    db.session.commit()
+    return jsonify({'id': dish.id}), 201
+
+# --- 4. Supprimer un plat ---
+@app.route('/api/menu/<int:dish_id>', methods=['DELETE'])
+def delete_dish(dish_id):
+    dish = Dish.query.get_or_404(dish_id)
+    db.session.delete(dish)
+    db.session.commit()
+    return jsonify({'success': True}), 200
+
+# --- 5. Commandes en attente (staff) ---
+@app.route('/api/orders/pending/<public_id>', methods=['GET'])
+def get_pending_orders(public_id):
+    restaurant = get_restaurant_by_public_id(public_id)
+    orders = Order.query.filter_by(
+        restaurant_id=restaurant.id,
+        status='pending'
+    ).order_by(Order.created_at.desc()).all()
+    return jsonify(format_orders_for_staff(orders))
+
+# --- 6. Commandes validées (staff) ---
+@app.route('/api/orders/confirmed/<public_id>', methods=['GET'])
+def get_confirmed_orders(public_id):
+    restaurant = get_restaurant_by_public_id(public_id)
+    orders = Order.query.filter(
+        Order.restaurant_id == restaurant.id,
+        Order.status.in_(['validated', 'completed'])
+    ).order_by(Order.created_at.desc()).all()
+    return jsonify(format_orders_for_staff(orders))
+
+# --- 7. Confirmer une commande (staff) ---
+@app.route('/api/order/<int:order_id>/confirm', methods=['POST'])
+def confirm_order(order_id):
+    order = Order.query.get_or_404(order_id)
+    order.status = 'validated'
+    db.session.commit()
+    return jsonify({'success': True}), 200
+
+# --- 8. Supprimer une commande (staff) ---
+@app.route('/api/order/<int:order_id>', methods=['DELETE'])
+def delete_order(order_id):
+    order = Order.query.get_or_404(order_id)
+    db.session.delete(order)
+    db.session.commit()
+    return jsonify({'success': True}), 200
+
+# --- 9. Statistiques du jour (staff) ---
+@app.route('/api/stats/today/<public_id>', methods=['GET'])
+def get_stats_today(public_id):
+    restaurant = get_restaurant_by_public_id(public_id)
+    today = date.today()
+    orders = Order.query.filter(
+        Order.restaurant_id == restaurant.id,
+        db.cast(Order.created_at, db.Date) == today,
+        Order.status.in_(['validated', 'completed'])
+    ).all()
+
+    total_sales = sum(
+        sum(item.dish.price * item.quantity for item in order.items)
+        for order in orders
+    )
+    orders_count = len(orders)
+
+    return jsonify({
+        'total_sales': round(total_sales, 2),
+        'orders_count': orders_count
+    })
+
+# --- 10. Créer commande (client) ---
+@app.route('/api/order/<public_id>', methods=['POST'])
+def create_order_client(public_id):
+    restaurant = get_restaurant_by_public_id(public_id)
+    data = request.get_json()
+    table_number = data.get('table_number')
+    items = data.get('items', [])
+
+    if not items:
+        return jsonify({'error': 'Aucun plat sélectionné'}), 400
+
+    order = Order(restaurant_id=restaurant.id, table_number=str(table_number))
+    db.session.add(order)
+    db.session.flush()
+
+    for item in items:
+        dish = Dish.query.filter_by(id=item['id'], restaurant_id=restaurant.id).first()
+        if not dish:
+            db.session.rollback()
+            return jsonify({'error': f'Plat non trouvé: {item["id"]}'}), 400
+        oi = OrderItem(order_id=order.id, dish_id=dish.id, quantity=1)
+        db.session.add(oi)
+
+    db.session.commit()
+    return jsonify({'order_id': order.id}), 201
+
+# --- 11. Statut commande (client) ---
+@app.route('/api/order/<int:order_id>/status', methods=['GET'])
+def get_order_status_client(order_id):
+    order = Order.query.get_or_404(order_id)
+    status_frontend = 'confirmed' if order.status in ['validated', 'completed'] else 'pending'
+    return jsonify({'status': status_frontend})
+
+# --- 12. Santé (pour Railway) ---
+@app.route('/health')
+def health():
+    return {'status': 'ok'}
+
+# === Lancement ===
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))  # ✅ Utilise PORT fourni par Railway
+    with app.app_context():
+        db.create_all()
+    port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
